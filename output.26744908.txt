@@ -1,0 +1,5 @@
+Array is of type:  <class 'numpy.ndarray'>
+No. of dimensions:  2
+Shape of array:  (2, 3)
+Size of array:  6
+Array stores elements of type:  int64
