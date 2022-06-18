@@ -2,10 +2,16 @@
 
 #SBATCH --job-name=tiny_mlp
 
-#SBATCH --output=tiny_mlp_output.txt
+#SBATCH --mem=1GB
 
-#SBATCH --mem=8GB
+#SBATCH --time=0-0:15
 
 #SBATCH --account=lect0085
+
+#SBATCH --output=output.%J.txt
+
+#SBATCH --cpus-per-task=1
+
+#SBATCH --gres=gpu:pascal:1
 
 python3 /home/mx572424/DLL/tiny_mlp.py
