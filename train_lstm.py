@@ -20,7 +20,7 @@ parser.add_argument('-bs', default=128, type=int, help='batch size')            
 parser.add_argument('-dataset', default='', type=str, help='file path to the dataset')  # dataset
 parser.add_argument('-epochs', default=50, type=int, help='number of epochs')           # epochs
 parser.add_argument('-lr', default=0.1, type=float, help='learning rate')               # learning rate
-parser.add_argument('-model', default='mlp', type=str, help='choose mlp/shortcut/lstm') # model
+parser.add_argument('-model', default='lstm', type=str, help='choose lstm')             # model
 parser.add_argument('-mom', default=0.9, type=float, help='momentum for sgd')           # momentum
 parser.add_argument('-optimizer', default='sgd', type=str, help='choose sgd/adam')      # optimizer
 parser.add_argument('-rs', default=22, type=int, help='random seed')                    # random seed
@@ -56,24 +56,72 @@ else:
 
 # read dataset
 data = pd.read_csv(args.dataset, low_memory=False)
+print('Initial shape of data:', data.shape)
 
-# one hot encode target
-data_set = data[['id']]
-data_set = data_set.join(pd.get_dummies(data['target']))
-data_set = data_set.join(data[data.columns[2:]])
-
-print(data_set.shape)
-
-# split data in targets and features
-targets = data_set.columns[1:4]
-features = data_set.columns[4:]
-
-# transform data to tensor
-x = torch.tensor(data_set[features].values).float()
-y = torch.tensor(data_set[targets].values).float()
+# define targets and features
+targets = data.columns[1:2]
+features = np.setdiff1d(data.columns, targets)
 
 # split data in train and test set
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=args.rs)
+x_train, x_test, y_train, y_test = train_test_split(data[features], data[targets], test_size=0.2, random_state=args.rs)
+print('Shape of x_train:', x_train.shape)
+print('Shape of y_train:', y_train.shape)
+print('Shape of x_test:', x_test.shape)
+print('Shape of y_test:', y_test.shape)
+
+# define sequential features
+historical_features = [
+
+    'home_team_history_goal',
+    'home_team_history_opponent_goal',
+    'home_team_history_is_play_home', 
+    'home_team_history_is_cup',
+    'home_team_history_rating',
+    'home_team_history_opponent_rating',
+
+    'away_team_history_goal',
+    'away_team_history_opponent_goal',
+    'away_team_history_is_play_home', 
+    'away_team_history_is_cup',
+    'away_team_history_rating',
+    'away_team_history_opponent_rating',
+] 
+
+# create 10 rows per game
+x_train_pivot = pd.wide_to_long(x_train, stubnames=historical_features, i=['id'], j='time', sep='_', suffix='\d+')
+x_test_pivot = pd.wide_to_long(x_test, stubnames=historical_features, i=['id'], j='time', sep='_', suffix='\d+')
+
+print(f"Train pivot shape: {x_train_pivot.shape}")  
+print(f"Test pivot shape: {x_test_pivot.shape}") 
+
+x_train_pivot = x_train_pivot.reset_index()
+x_test_pivot = x_test_pivot.reset_index()
+
+x_train = x_train_pivot.copy()
+x_test = x_test_pivot.copy()
+
+# one hot encode target
+y_train = pd.get_dummies(y_train)
+y_test = pd.get_dummies(y_test)
+
+# transform data to tensor
+x_train = torch.tensor(x_train.values).float()
+y_train = torch.tensor(y_train.values).float()
+x_test = torch.tensor(x_test.values).float()
+y_test = torch.tensor(y_test.values).float()
+
+# resize data to 3-dimensional tensor
+x_train = x_train.view(-1, 10, x_train.shape[-1])
+x_test = x_test.view(-1, 10, x_test.shape[-1])
+
+print(f"LSTM x_train shape: {x_train.size()}")  
+print(f"LSTM x_test shape: {x_test.size()}") 
+print(f"LSTM y_train shape: {y_train.size()}")  
+print(f"LSTM y_test shape: {y_test.size()}") 
+
+'''
+@nemo: This should be the final input for the lstm!!!
+'''
 
 # define dataset
 class DataSet():
@@ -93,7 +141,7 @@ train_loader = torch.utils.data.DataLoader(DataSet(x_train,y_train), batch_size=
 test_loader =  torch.utils.data.DataLoader(DataSet(x_test,y_test), batch_size=args.bs, shuffle=True)
 
 # configure model
-model = get_model(args, len(features))
+model = get_model(args, 128)
 model.float()
 model.to(device)
 
@@ -212,7 +260,3 @@ def train_model(model):
 
 train_model(model)
 print_test_results(model)
-
-outputs = model.forward(x_test)
-loss = criterion(outputs, y_test)
-print(loss)
